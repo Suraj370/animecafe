@@ -1,8 +1,13 @@
 import type { Fruit, Ingredient, Item, Topping } from "./types";
 
-/** Design resolution — the whole game is drawn at this size and scaled to fit. */
-export const W = 1280;
-export const H = 720;
+/**
+ * Design resolution — matches the mockup the art was extracted from
+ * (art-src/mockup.webp), so every overlay lines up pixel for pixel.
+ */
+export const W = 1213;
+export const H = 672;
+/** Customers are drawn behind the counter: everything below this y is counter. */
+export const COUNTER_Y = 312;
 
 export const STAGE_TIME = 120;
 export const MAX_LV = 5;
@@ -11,11 +16,11 @@ export const BATTER_PORTIONS = 4;
 export const CHOCOLATE_STAGE = 6;
 export const MAX_STACK = 3;
 
-/** Customer standing positions (centre x, design px). */
-export const SLOTS_X = [330, 640, 950];
-export const ENTRY_X = 1460;
-export const EXIT_X = -160;
-export const WALK_SPEED = 430; // px per second
+/** Customer standing positions (body centre x, design px) — where they stand in the mockup. */
+export const SLOTS_X = [268, 563, 905];
+export const ENTRY_X = 1380;
+export const EXIT_X = -150;
+export const WALK_SPEED = 400; // px per second
 
 export const FRUITS: Fruit[] = ["strawberry", "blueberry", "banana"];
 export const TOPPING_ORDER: Topping[] = [
@@ -30,6 +35,9 @@ export const TOPPING_ORDER: Topping[] = [
 export const stageLabel = (stage: number) =>
   `${Math.floor((stage - 1) / 5) + 1}-${((stage - 1) % 5) + 1}`;
 export const targetFor = (stage: number) => 1200 + (stage - 1) * 300;
+/** Score needed for 1, 2 and 3 stars. */
+export const starGoals = (stage: number) => [1, 1.3, 1.6].map((k) => Math.round(targetFor(stage) * k));
+export const starsFor = (score: number, stage: number) => starGoals(stage).filter((g) => score >= g).length;
 export const patienceFor = (stage: number) => Math.max(26, 52 - stage * 2);
 export const spawnGap = (stage: number) =>
   Math.max(1.5, 5.5 - stage * 0.35) + Math.random() * 3;

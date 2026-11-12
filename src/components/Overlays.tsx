@@ -5,13 +5,13 @@ import * as C from "@/game/config";
 import type { Action } from "@/game/logic";
 import { LOOKS } from "@/game/looks";
 import type { GameState } from "@/game/types";
-import { Character } from "./Character";
+import { CharSprite } from "./Scene";
 import { Coin } from "./Counter";
 
 type Props = { s: GameState; dispatch: Dispatch<Action> };
 
 const btn =
-  "rounded-full border-[3px] border-[#F3D9A4] px-7 py-2 text-[20px] font-semibold text-white shadow-[0_4px_10px_rgba(40,20,40,.35)] transition hover:brightness-110 active:scale-95";
+  "whitespace-nowrap rounded-full border-[3px] border-[#F3D9A4] px-6 py-2 text-[20px] font-semibold text-white shadow-[0_4px_10px_rgba(40,20,40,.35)] transition hover:brightness-110 active:scale-95";
 const primary = `${btn} bg-gradient-to-b from-[#FF8FB5] to-[#E0588A]`;
 const secondary = `${btn} bg-gradient-to-b from-[#5B3D63] to-[#3E2A47]`;
 
@@ -34,8 +34,8 @@ export function MenuOverlay({ s, dispatch }: Props) {
     <Modal wide>
       <div className="flex gap-6">
         <div className="relative h-[300px] w-[200px] shrink-0 overflow-hidden">
-          <div className="breathe">
-            <Character look={LOOKS[1]} expression="happy" />
+          <div className="breathe absolute bottom-0 left-[4px] origin-bottom-left scale-[1.28]">
+            <CharSprite look={LOOKS[1]} />
           </div>
         </div>
         <div className="flex-1">
@@ -43,16 +43,22 @@ export function MenuOverlay({ s, dispatch }: Props) {
           <h1 className="title-font text-[52px] leading-none text-[#5B3D63]">Anime Café</h1>
           <p className="mt-2 text-[15px] text-[#8C6A80]">Customers stroll in one by one. Cook their pancakes & smoothies before their patience runs out!</p>
           <ol className="mt-3 space-y-1 text-[14px]">
-            <li>🥞 <b>Pancakes:</b> Flour + Eggs + Milk → bowl whisks batter → tap griddle → tap golden pancake to plate → add toppings.</li>
-            <li>🥤 <b>Drinks:</b> switch to <b>Drink</b> mode → Milk + one Fruit (+ Ice) → tap blender ⏻ → cream optional.</li>
-            <li>🙋 <b>Serve:</b> tap the plate/cup, then the customer. Spare items go on the Premade Slate.</li>
+            <li>✋ <b>Drag & drop</b> everything — grab an item and drop it where it goes (tapping works too).</li>
+            <li>🥞 <b>Pancakes:</b> drag Flour, Eggs, Milk into the bowl → drag batter to the griddle → drag the golden pancake to the plate → drag toppings on.</li>
+            <li>🥤 <b>Drinks:</b> drag Milk + one Fruit (+ Ice) into the blender → tap ⏻ → cream optional.</li>
+            <li>🙋 <b>Serve:</b> drag the plate or cup onto the customer. Spares go on the Premade Slate.</li>
           </ol>
           <div className="mt-5 flex items-center gap-3">
             <button type="button" className={primary} onClick={() => dispatch({ type: "start" })}>
-              ▶ Start Stage {C.stageLabel(s.progress.stage)}
+              {s.progress.tutorialDone ? `▶ Start Stage ${C.stageLabel(s.progress.stage)}` : "▶ Play Tutorial"}
             </button>
+            {s.progress.tutorialDone && (
+              <button type="button" className={secondary} onClick={() => dispatch({ type: "tutorial" })}>
+                📖 Tutorial
+              </button>
+            )}
             <button type="button" className={secondary} onClick={() => dispatch({ type: "upgrades", open: true })}>
-              🔧 Upgrades
+              🔧
             </button>
           </div>
         </div>
@@ -66,14 +72,21 @@ export function PauseOverlay({ s, dispatch }: Props) {
     <Modal>
       <h2 className="title-font text-center text-[40px]">Paused</h2>
       <p className="text-center text-[15px] text-[#8C6A80]">
-        Stage {C.stageLabel(s.stage)} · {Math.ceil(s.timeLeft)}s left · Score {s.score}
+        {s.tutorial !== null
+          ? "Tutorial"
+          : `Stage ${C.stageLabel(s.stage)} · ${Math.ceil(s.timeLeft)}s left · Score ${s.score}`}
       </p>
       <div className="mt-6 flex flex-col items-center gap-3">
         <button type="button" className={primary} onClick={() => dispatch({ type: "resume" })}>
           ▶ Resume
         </button>
-        <button type="button" className={secondary} onClick={() => dispatch({ type: "retry" })}>
-          ↻ Restart stage
+        {s.tutorial === null && (
+          <button type="button" className={secondary} onClick={() => dispatch({ type: "retry" })}>
+            ↻ Restart stage
+          </button>
+        )}
+        <button type="button" className={secondary} onClick={() => dispatch({ type: "tutorial" })}>
+          📖 {s.tutorial === null ? "How to play" : "Restart tutorial"}
         </button>
         <button type="button" className={secondary} onClick={() => dispatch({ type: "menu" })}>
           ⌂ Main menu
@@ -105,7 +118,10 @@ export function EndOverlay({ s, dispatch }: Props) {
           </span>
         ))}
       </div>
-      <div className="mx-auto grid w-[340px] grid-cols-2 gap-y-1 text-[17px]">
+      <p className="text-center text-[13px] text-[#8C6A80]">
+        {C.starGoals(r.stage).map((g, i) => `${"⭐".repeat(i + 1)} ${g.toLocaleString()}`).join("  ·  ")}
+      </p>
+      <div className="mx-auto mt-2 grid w-[340px] grid-cols-2 gap-y-1 text-[17px]">
         <span>Score</span>
         <b className="text-right">
           {s.score.toLocaleString()} / {C.targetFor(r.stage).toLocaleString()}

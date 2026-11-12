@@ -250,3 +250,129 @@ body {
     animation: none !important;
   }
 }
+
+/* ---------- tutorial ---------- */
+.tut-spot {
+  outline: 4px dashed #ffd34d;
+  outline-offset: 2px;
+  animation: tut-spot 1.2s ease-in-out infinite;
+}
+@keyframes tut-spot {
+  0%, 100% { outline-color: #ffd34d; }
+  50% { outline-color: #ff8fb5; }
+}
+
+.tut-hand {
+  animation: tut-hand-up 0.8s ease-in-out infinite;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.35));
+}
+.tut-hand-down {
+  animation-name: tut-hand-down;
+}
+@keyframes tut-hand-up {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -12px; }
+}
+@keyframes tut-hand-down {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 12px; }
+}
+
+.tut-dots::after {
+  content: "";
+  animation: tut-dots 1.2s steps(4, end) infinite;
+}
+@keyframes tut-dots {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+}
+
+/* ---------- drag & drop ---------- */
+[data-draggable] {
+  touch-action: none;
+}
+.drag-ghost {
+  translate: -50% -55%;
+  scale: 1.08;
+  filter: drop-shadow(0 12px 14px rgba(60, 20, 50, 0.35));
+  animation: ghost-wobble 0.9s ease-in-out infinite;
+}
+@keyframes ghost-wobble {
+  0%, 100% { rotate: -3deg; }
+  50% { rotate: 3deg; }
+}
+.drop-ok {
+  outline: 3px dashed #7bd67b;
+  outline-offset: 3px;
+  animation: drop-ok 0.9s ease-in-out infinite;
+}
+@keyframes drop-ok {
+  0%, 100% { outline-color: #7bd67b; }
+  50% { outline-color: #c4f5c4; }
+}
+.drop-over {
+  outline: 4px solid #39b54a;
+  outline-offset: 3px;
+  box-shadow: 0 0 22px 6px rgba(123, 214, 123, 0.6);
+  scale: 1.04;
+}
+.serve-hover {
+  filter: drop-shadow(0 0 14px rgba(123, 214, 123, 1)) brightness(1.06);
+}
+
+.tut-dest {
+  outline-style: dashed;
+  outline-color: #7bd67b;
+  animation: none;
+}
+.tut-drag-hand {
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.35));
+  animation: tut-drag 2s ease-in-out infinite;
+}
+@keyframes tut-drag {
+  0% { translate: 0 0; opacity: 0; scale: 1; }
+  12% { translate: 0 0; opacity: 1; scale: 0.85; }
+  70% { translate: var(--dx) var(--dy); opacity: 1; scale: 0.85; }
+  82% { translate: var(--dx) var(--dy); opacity: 1; scale: 1; }
+  100% { translate: var(--dx) var(--dy); opacity: 0; scale: 1; }
+}
+
+.drag-hint-hand {
+  animation: drag-hint 1.8s ease-in-out infinite;
+}
+@keyframes drag-hint {
+  0%, 100% { translate: -10px 2px; rotate: -8deg; }
+  50% { translate: 10px -2px; rotate: 8deg; }
+}
+
+/* ---------- extracted-art overlays ---------- */
+.hud-num,
+.hud-text {
+  letter-spacing: 0.01em;
+}
+.hud-num {
+  text-shadow: 0 1px 0 rgba(40, 15, 35, 0.55);
+}
+.timer-blink {
+  animation: timer-blink 0.6s ease-in-out infinite alternate;
+}
+@keyframes timer-blink {
+  from { opacity: 1; }
+  to { opacity: 0.55; }
+}
+.mood-angry {
+  filter: drop-shadow(0 0 6px rgba(255, 70, 90, 0.8)) saturate(1.15);
+}
+.mood-happy {
+  filter: drop-shadow(0 0 8px rgba(255, 170, 210, 0.9)) brightness(1.05);
+}
+.anger {
+  position: absolute;
+  animation: anger 0.7s ease-in-out infinite;
+}
+@keyframes anger {
+  0%, 100% { scale: 1; rotate: -8deg; }
+  50% { scale: 1.25; rotate: 8deg; }
+}

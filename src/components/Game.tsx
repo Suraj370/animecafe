@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import { H, W } from "@/game/config";
+import { COUNTER_Y, H, W } from "@/game/config";
 import { useGame } from "@/game/useGame";
 import { BottomBar } from "./BottomBar";
 import { Counter } from "./Counter";
-import { CustomerView } from "./Customers";
+import { CustomerView, OrderBubble } from "./Customers";
+import { DragProvider } from "./drag";
+import { FoodDefs } from "./Food";
 import { Hud } from "./Hud";
 import { EndOverlay, MenuOverlay, PauseOverlay, UpgradesOverlay } from "./Overlays";
-import { CounterBack, SceneBack } from "./Scene";
+import { Background } from "./Scene";
+import { TutorialOverlay } from "./Tutorial";
 
 function subscribe(cb: () => void) {
   window.addEventListener("resize", cb);
@@ -26,17 +29,25 @@ export default function Game() {
     <div className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[#2a1b2e]">
       <div style={{ width: W * scale, height: H * scale }} className="relative">
         <div
-          className="game-root absolute left-0 top-0 select-none overflow-hidden"
+          className="game-root absolute left-0 top-0 touch-none select-none overflow-hidden"
           style={{ width: W, height: H, transform: `scale(${scale})`, transformOrigin: "top left" }}
         >
-          <SceneBack served={s.served} lost={s.lost} />
+          <DragProvider s={s} dispatch={dispatch}>
+          <FoodDefs />
+          <Background />
 
-          {/* customers stand behind the counter */}
-          {s.customers.map((c) => (
-            <CustomerView key={c.id} c={c} holding={!!s.held} onServe={serve} />
-          ))}
+          {/* customers stand behind the counter: clip them at its edge */}
+          <div className="absolute left-0 top-0 overflow-hidden" style={{ width: W, height: COUNTER_Y }}>
+            {s.customers.map((c) => (
+              <CustomerView key={c.id} c={c} holding={!!s.held} onServe={serve} />
+            ))}
+          </div>
+          {s.customers
+            .filter((c) => c.phase === "waiting")
+            .map((c) => (
+              <OrderBubble key={c.id} c={c} onServe={serve} />
+            ))}
 
-          <CounterBack />
           <Counter s={s} dispatch={dispatch} />
           <BottomBar s={s} dispatch={dispatch} />
           <Hud s={s} dispatch={dispatch} />
@@ -52,8 +63,10 @@ export default function Game() {
             </div>
           ))}
 
+          {s.tutorial !== null && s.phase === "playing" && <TutorialOverlay s={s} dispatch={dispatch} />}
+
           {s.toast && (
-            <div key={s.toast.id} className="toast pointer-events-none absolute left-1/2 top-[290px] z-50 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#3E2A47]/90 px-5 py-2 text-[17px] font-semibold text-white shadow-lg">
+            <div key={s.toast.id} className="toast pointer-events-none absolute left-1/2 top-[262px] z-50 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#3E2A47]/90 px-5 py-2 text-[17px] font-semibold text-white shadow-lg">
               {s.toast.text}
             </div>
           )}
@@ -62,6 +75,7 @@ export default function Game() {
           {s.phase === "paused" && !s.showUpgrades && <PauseOverlay s={s} dispatch={dispatch} />}
           {s.phase === "ended" && !s.showUpgrades && <EndOverlay s={s} dispatch={dispatch} />}
           {s.showUpgrades && <UpgradesOverlay s={s} dispatch={dispatch} />}
+          </DragProvider>
         </div>
       </div>
     </div>

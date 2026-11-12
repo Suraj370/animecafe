@@ -11,7 +11,6 @@ export type Ingredient =
   | "syrup"
   | "cream"
   | "chocolate";
-export type Mode = "pancake" | "drink";
 
 export interface PancakeItem {
   kind: "pancake";
@@ -97,6 +96,7 @@ export interface Progress {
   griddleLv: number;
   slateUnlocked: number;
   best: Record<number, number>;
+  tutorialDone: boolean;
 }
 
 export interface RoundResult {
@@ -114,7 +114,6 @@ export interface GameState {
   autoPaused: boolean;
   progress: Progress;
   stage: number;
-  mode: Mode;
   score: number;
   timeLeft: number;
   served: number;
@@ -133,4 +132,15 @@ export interface GameState {
   toast: { id: number; text: string; t: number } | null;
   showUpgrades: boolean;
   result: RoundResult | null;
+  /** current tutorial step, or null outside the tutorial */
+  tutorial: number | null;
 }
+
+/** Something the player is dragging. */
+export type DragSource =
+  | { kind: "ingredient"; ing: Ingredient }
+  | { kind: "batter" }
+  | { kind: "griddle"; index: number }
+  | { kind: "plate" }
+  | { kind: "cup" }
+  | { kind: "slate"; index: number };

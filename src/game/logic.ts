@@ -1,13 +1,15 @@
 import * as C from "./config";
 import { LOOKS } from "./looks";
+import { TUTORIAL, TUTORIAL_GUEST, TUTORIAL_LAST } from "./tutorial";
 import type {
   Customer,
+  DragSource,
   DrinkItem,
+  Fruit,
   GameState,
   Held,
   Ingredient,
   Item,
-  Mode,
   OrderLine,
   PancakeItem,
   Progress,
@@ -26,7 +28,6 @@ export type Action =
   | { type: "upgrades"; open: boolean }
   | { type: "upgrade"; what: "mixer" | "griddle" | "slate" }
   | { type: "tick"; dt: number }
-  | { type: "mode"; mode: Mode }
   | { type: "ingredient"; ing: Ingredient }
   | { type: "bowl" }
   | { type: "griddle"; index: number }
@@ -35,7 +36,24 @@ export type Action =
   | { type: "blend" }
   | { type: "slate"; index: number }
   | { type: "customer"; id: number }
-  | { type: "trash" };
+  | { type: "trash" }
+  | { type: "drop"; source: DragSource; target: string }
+  | { type: "tutorial" }
+  | { type: "tutorialNext" }
+  | { type: "tutorialSkip" };
+
+const GAMEPLAY: Action["type"][] = [
+  "ingredient",
+  "bowl",
+  "griddle",
+  "plate",
+  "cup",
+  "blend",
+  "slate",
+  "customer",
+  "trash",
+  "drop",
+];
 
 let uid = 1;
 const nextId = () => uid++;
@@ -105,6 +123,7 @@ export const defaultProgress = (): Progress => ({
   griddleLv: 1,
   slateUnlocked: 4,
   best: {},
+  tutorialDone: false,
 });
 
 function sanitize(p: Partial<Progress>): Progress {
@@ -121,7 +140,48 @@ function sanitize(p: Partial<Progress>): Progress {
     griddleLv: num(p.griddleLv, d.griddleLv, 1, C.MAX_LV),
     slateUnlocked: num(p.slateUnlocked, d.slateUnlocked, 4, C.SLATE_SIZE),
     best: p.best && typeof p.best === "object" ? p.best : {},
+    tutorialDone: p.tutorialDone === true,
   };
+}
+
+function tutorialRound(state: GameState): GameState {
+  return { ...freshRound(state.progress, 1), phase: "playing", loaded: state.loaded, tutorial: 0 };
+}
+
+function spawnTutorialGuest(s: GameState) {
+  const slot = TUTORIAL_GUEST.slot;
+  const walk = (C.ENTRY_X - C.SLOTS_X[slot]) / C.WALK_SPEED;
+  s.customers = [
+    {
+      id: nextId(),
+      look: TUTORIAL_GUEST.look,
+      slot,
+      phase: "entering",
+      timer: walk,
+      walkDur: walk,
+      patience: 60,
+      maxPatience: 60,
+      order: [
+        { done: false, item: { kind: "pancake", count: 1, toppings: ["strawberry"] } },
+        { done: false, item: { kind: "drink", fruit: "strawberry", ice: false, cream: false } },
+      ],
+      mood: "happy",
+      rejectFlash: 0,
+    },
+  ];
+}
+
+function advanceTutorial(s: GameState) {
+  while (s.tutorial !== null && s.tutorial < TUTORIAL_LAST) {
+    const step = TUTORIAL[s.tutorial];
+    if (!step.done?.(s)) break;
+    s.tutorial += 1;
+  }
+}
+
+function finishTutorial(state: GameState): GameState {
+  const progress = { ...state.progress, tutorialDone: true };
+  return { ...freshRound(progress, progress.stage), phase: "playing", loaded: state.loaded };
 }
 
 function freshRound(
@@ -132,7 +192,6 @@ function freshRound(
     autoPaused: false,
     progress,
     stage,
-    mode: "pancake",
     score: 0,
     timeLeft: C.STAGE_TIME,
     served: 0,
@@ -153,6 +212,7 @@ function freshRound(
     toast: null,
     showUpgrades: false,
     result: null,
+    tutorial: null,
   };
 }
 
@@ -241,43 +301,174 @@ function blenderBusy(s: GameState) {
   return false;
 }
 
-function handleIngredient(s: GameState, ing: Ingredient) {
-  const drink = s.mode === "drink";
+export type Dest = "bowl" | "blender" | "plate" | "cup";
+const DESTS: string[] = ["bowl", "blender", "plate", "cup"];
+const TOPPINGS: Ingredient[] = ["strawberry", "blueberry", "banana", "syrup", "cream", "chocolate"];
+const isFruit = (i: Ingredient): i is Fruit => (C.FRUITS as string[]).includes(i);
+const label = (i: Ingredient) => C.INGREDIENTS.find((x) => x.id === i)?.label ?? i;
+
+/**
+ * Where a tapped ingredient goes. Picked from what's already on the counter,
+ * so there's no Pancake/Drink mode to switch. Dragging always goes exactly
+ * where the player drops it.
+ */
+export function autoRoute(s: GameState, ing: Ingredient): Dest {
+  const bowlFree = s.bowl.whisk <= 0 && s.bowl.batter <= 0;
+  const blenderFree = s.blender.blend <= 0 && !s.blender.ready;
+  const drinkStarted = blenderFree && (!!s.blender.fruit || s.blender.ice);
   switch (ing) {
     case "flour":
     case "eggs":
-      return addToBowl(s, ing);
+      return "bowl";
     case "milk":
-      if (!drink) return addToBowl(s, "milk");
-      if (blenderBusy(s)) return;
-      if (s.blender.milk) return toast(s, "Blender already has milk");
-      s.blender.milk = true;
-      return;
+      if (drinkStarted && !s.blender.milk) return "blender";
+      if (bowlFree && !s.bowl.milk) return "bowl";
+      return "blender";
     case "strawberry":
     case "blueberry":
     case "banana":
-      if (!drink) return addTopping(s, ing);
-      if (blenderBusy(s)) return;
-      if (s.blender.fruit) return toast(s, "One fruit per smoothie!");
-      s.blender.fruit = ing;
-      return;
+      if (s.plate && !s.plate.toppings.includes(ing)) return "plate";
+      if (blenderFree && !s.blender.fruit) return "blender";
+      return "plate";
     case "ice":
-      if (blenderBusy(s)) return;
-      if (s.blender.ice) return toast(s, "Blender already has ice");
-      s.blender.ice = true;
-      return;
-    case "syrup":
-      return addTopping(s, "syrup");
+      return "blender";
     case "cream":
-      if (!drink) return addTopping(s, "cream");
+      if (s.plate && !s.plate.toppings.includes("cream")) return "plate";
+      if (s.cup && !s.cup.cream) return "cup";
+      return "plate";
+    default:
+      return "plate";
+  }
+}
+
+function ingredientInto(s: GameState, ing: Ingredient, dest: Dest) {
+  switch (dest) {
+    case "bowl":
+      if (ing === "flour" || ing === "eggs" || ing === "milk") return addToBowl(s, ing);
+      return toast(s, `${label(ing)} doesn't go in the bowl`);
+    case "blender":
+      if (ing !== "milk" && ing !== "ice" && !isFruit(ing))
+        return toast(s, `${label(ing)} doesn't go in the blender`);
+      if (blenderBusy(s)) return;
+      if (ing === "milk") {
+        if (s.blender.milk) return toast(s, "Blender already has milk");
+        s.blender.milk = true;
+      } else if (ing === "ice") {
+        if (s.blender.ice) return toast(s, "Blender already has ice");
+        s.blender.ice = true;
+      } else {
+        if (s.blender.fruit) return toast(s, "One fruit per smoothie!");
+        s.blender.fruit = ing;
+      }
+      return;
+    case "plate":
+      if (ing === "chocolate" && s.stage < C.CHOCOLATE_STAGE)
+        return toast(s, `Chocolate unlocks at stage ${C.stageLabel(C.CHOCOLATE_STAGE)}`);
+      if (!TOPPINGS.includes(ing)) return toast(s, `${label(ing)} isn't a pancake topping`);
+      return addTopping(s, ing as Topping);
+    case "cup":
+      if (ing !== "cream") return toast(s, "Only whipped cream goes on top of drinks");
       if (!s.cup) return toast(s, "Blend a drink first!");
       if (s.cup.cream) return toast(s, "Drink already has cream");
       s.cup.cream = true;
       return;
-    case "chocolate":
-      if (s.stage < C.CHOCOLATE_STAGE)
-        return toast(s, `Chocolate unlocks at stage ${C.stageLabel(C.CHOCOLATE_STAGE)}`);
-      return addTopping(s, "chocolate");
+  }
+}
+
+function plateFromGriddle(s: GameState, index: number) {
+  if (s.plate && s.plate.toppings.length)
+    return toast(s, "Plate is already topped — serve or trash it");
+  if (s.plate && s.plate.count >= C.MAX_STACK) return toast(s, `Max ${C.MAX_STACK} pancakes per plate`);
+  const plate: PancakeItem = s.plate ?? { kind: "pancake", count: 0, toppings: [] };
+  plate.count += 1;
+  s.plate = plate;
+  s.griddle[index] = { state: "empty" };
+}
+
+function reject(s: GameState, c: Customer) {
+  c.rejectFlash = 0.6;
+  c.patience = Math.max(0.5, c.patience - 3);
+  toast(s, `${LOOKS[c.look].name} didn't order that!`);
+}
+
+const splitTarget = (t: string): [string, number] => {
+  const i = t.indexOf("-");
+  return i < 0 ? [t, NaN] : [t.slice(0, i), Number(t.slice(i + 1))];
+};
+
+/** Whether `src` can be dropped on `target` right now — used to light up drop zones. */
+export function canDrop(s: GameState, src: DragSource, target: string): boolean {
+  const [kind, n] = splitTarget(target);
+  switch (src.kind) {
+    case "ingredient": {
+      const i = src.ing;
+      if (target === "bowl")
+        return (i === "flour" || i === "eggs" || i === "milk") && s.bowl.whisk <= 0 && s.bowl.batter <= 0 && !s.bowl[i];
+      if (target === "blender") return (i === "milk" || i === "ice" || isFruit(i)) && s.blender.blend <= 0 && !s.blender.ready;
+      if (target === "plate")
+        return TOPPINGS.includes(i) && !!s.plate && (i !== "chocolate" || s.stage >= C.CHOCOLATE_STAGE);
+      if (target === "cup") return i === "cream" && !!s.cup && !s.cup.cream;
+      return false;
+    }
+    case "batter":
+      return kind === "griddle" && s.griddle[n]?.state === "empty";
+    case "griddle": {
+      const g = s.griddle[src.index];
+      if (target === "trash") return g?.state === "cooked" || g?.state === "burnt";
+      return target === "plate" && g?.state === "cooked";
+    }
+    default: {
+      if (target === "trash") return true;
+      if (kind === "customer") return s.customers.some((c) => c.id === n && c.phase === "waiting");
+      if (kind === "slate")
+        return n < s.progress.slateUnlocked && !s.slate[n] && !(src.kind === "slate" && src.index === n);
+      return false;
+    }
+  }
+}
+
+function handleDrop(s: GameState, src: DragSource, target: string) {
+  const [kind, n] = splitTarget(target);
+  if (src.kind === "ingredient") {
+    if (DESTS.includes(target)) ingredientInto(s, src.ing, target as Dest);
+    else if (target !== "trash") toast(s, "Ingredients go in the bowl, blender, plate or cup");
+    return;
+  }
+  if (src.kind === "batter") {
+    if (kind !== "griddle") return toast(s, "Drop the batter onto the griddle");
+    if (s.griddle[n]?.state !== "empty") return toast(s, "That spot is taken");
+    return pourBatter(s, n);
+  }
+  if (src.kind === "griddle") {
+    const g = s.griddle[src.index];
+    if (!g || g.state === "empty") return;
+    if (g.state === "cooking") return toast(s, "Still cooking…");
+    if (target === "trash") {
+      s.griddle[src.index] = { state: "empty" };
+      return toast(s, g.state === "burnt" ? "Burnt pancake tossed 💨" : "Tossed in the trash");
+    }
+    if (target !== "plate") return toast(s, "Drop the pancake onto the plate");
+    if (g.state === "burnt") return toast(s, "That one's burnt — drag it to the trash");
+    return plateFromGriddle(s, src.index);
+  }
+  const from: NonNullable<Held> = src.kind === "slate" ? { from: "slate", index: src.index } : { from: src.kind };
+  const item = itemAt(s, from);
+  if (!item) return;
+  if (kind === "customer") {
+    const c = s.customers.find((x) => x.id === n && x.phase === "waiting");
+    if (c && !serve(s, c, item, from)) reject(s, c);
+  } else if (kind === "slate") {
+    if (n >= s.progress.slateUnlocked) toast(s, "Unlock this slot first");
+    else if (s.slate[n]) toast(s, "That slot is already full");
+    else {
+      take(s, from);
+      s.slate[n] = item;
+    }
+  } else if (target === "trash") {
+    take(s, from);
+    toast(s, "Tossed in the trash");
+  } else if (target !== src.kind) {
+    toast(s, "Drag it onto a customer, the slate or the trash");
   }
 }
 
@@ -297,7 +488,7 @@ function endRound(s: GameState) {
   s.showUpgrades = false;
   const target = C.targetFor(s.stage);
   const cleared = s.score >= target;
-  const stars = !cleared ? 0 : s.score >= target * 1.6 ? 3 : s.score >= target * 1.3 ? 2 : 1;
+  const stars = !cleared ? 0 : C.starsFor(s.score, s.stage);
   const gems = stars === 3 ? 5 : stars === 2 ? 2 : 0;
   s.progress.gems += gems;
   s.progress.best = {
@@ -310,7 +501,8 @@ function endRound(s: GameState) {
 
 function tick(s: GameState, dt: number) {
   const p = s.progress;
-  s.timeLeft -= dt;
+  const tut = s.tutorial !== null; // the tutorial has no clock, burning or impatience
+  if (!tut) s.timeLeft -= dt;
 
   // bowl
   if (s.bowl.whisk > 0) {
@@ -327,6 +519,7 @@ function tick(s: GameState, dt: number) {
       return t >= C.cookTime(p.griddleLv) ? { state: "cooked", t: 0 } : { state: "cooking", t };
     }
     if (g.state === "cooked") {
+      if (tut) return g;
       const t = g.t + dt;
       return t >= C.burnTime(p.griddleLv) ? { state: "burnt" } : { state: "cooked", t };
     }
@@ -354,6 +547,7 @@ function tick(s: GameState, dt: number) {
       c.timer -= dt;
       if (c.timer <= 0) c.phase = "waiting";
     } else if (c.phase === "waiting") {
+      if (tut) continue;
       c.patience -= dt;
       const r = c.patience / c.maxPatience;
       c.mood = r > 0.55 ? "happy" : r > 0.25 ? "neutral" : "angry";
@@ -370,8 +564,8 @@ function tick(s: GameState, dt: number) {
   s.customers = s.customers.filter((c) => !(c.phase === "leaving" && c.timer <= 0));
 
   // spawn customers one by one
-  s.spawnTimer -= dt;
-  if (s.spawnTimer <= 0) {
+  if (!tut) s.spawnTimer -= dt;
+  if (!tut && s.spawnTimer <= 0) {
     const occupied = new Set(
       s.customers.filter((c) => c.phase !== "leaving").map((c) => c.slot),
     );
@@ -379,8 +573,12 @@ function tick(s: GameState, dt: number) {
     const someoneWalkingIn = s.customers.some((c) => c.phase === "entering");
     if (free.length && !someoneWalkingIn && s.timeLeft > 12) {
       const slot = pick(free);
-      const used = new Set(s.customers.map((c) => c.look));
-      const looks = LOOKS.map((_, i) => i).filter((i) => !used.has(i));
+      // Never two of the same character at the counter. Prefer one that isn't even walking out.
+      const atCounter = new Set(s.customers.filter((c) => c.phase !== "leaving").map((c) => c.look));
+      const onScreen = new Set(s.customers.map((c) => c.look));
+      const freeLooks = LOOKS.map((_, i) => i).filter((i) => !atCounter.has(i));
+      const fresh = freeLooks.filter((i) => !onScreen.has(i));
+      const looks = fresh.length ? fresh : freeLooks;
       const patience = C.patienceFor(s.stage);
       const walk = (C.ENTRY_X - C.SLOTS_X[slot]) / C.WALK_SPEED;
       s.customers.push({
@@ -411,7 +609,7 @@ function tick(s: GameState, dt: number) {
     if (s.toast.t <= 0) s.toast = null;
   }
 
-  if (s.timeLeft <= 0) endRound(s);
+  if (!tut && s.timeLeft <= 0) endRound(s);
 }
 
 function upgrade(s: GameState, what: "mixer" | "griddle" | "slate") {
@@ -456,7 +654,22 @@ export function reducer(state: GameState, action: Action): GameState {
       return { ...freshRound(progress, 1), phase: "menu", loaded: state.loaded };
     }
     case "start":
+      if (!state.progress.tutorialDone) return tutorialRound(state);
       return { ...freshRound(state.progress, state.progress.stage), phase: "playing", loaded: state.loaded };
+    case "tutorial":
+      return tutorialRound(state);
+    case "tutorialSkip":
+      return state.tutorial === null ? state : finishTutorial(state);
+    case "tutorialNext": {
+      if (state.tutorial === null || state.phase !== "playing") return state;
+      if (!TUTORIAL[state.tutorial].next) return state;
+      if (state.tutorial >= TUTORIAL_LAST) return finishTutorial(state);
+      const s = structuredClone(state);
+      s.tutorial = state.tutorial + 1;
+      if (state.tutorial === 0) spawnTutorialGuest(s);
+      advanceTutorial(s);
+      return s;
+    }
     case "retry":
       return { ...freshRound(state.progress, state.stage), phase: "playing", loaded: state.loaded };
     case "next":
@@ -492,17 +705,25 @@ export function reducer(state: GameState, action: Action): GameState {
   }
 
   if (state.phase !== "playing") return state;
+  // A tapped ingredient is the same as dragging it to the station it fits right now.
+  if (action.type === "ingredient")
+    action = { type: "drop", source: { kind: "ingredient", ing: action.ing }, target: autoRoute(state, action.ing) };
+  if (state.tutorial !== null && GAMEPLAY.includes(action.type)) {
+    const allow = TUTORIAL[state.tutorial].allow;
+    if (!allow?.(action)) {
+      const s = structuredClone(state);
+      toast(s, "Follow the highlighted step 👆");
+      return s;
+    }
+  }
   const s = structuredClone(state);
 
   switch (action.type) {
     case "tick":
       tick(s, action.dt);
       break;
-    case "mode":
-      s.mode = action.mode;
-      break;
-    case "ingredient":
-      handleIngredient(s, action.ing);
+    case "drop":
+      handleDrop(s, action.source, action.target);
       break;
     case "bowl": {
       if (s.bowl.batter > 0) {
@@ -511,7 +732,7 @@ export function reducer(state: GameState, action: Action): GameState {
         else pourBatter(s, i);
       } else if (s.bowl.whisk <= 0) {
         const missing = (["flour", "eggs", "milk"] as const).filter((k) => !s.bowl[k]);
-        toast(s, `Bowl needs: ${missing.join(", ")}${s.mode === "drink" && missing.includes("milk") ? " (switch to Pancake for milk)" : ""}`);
+        toast(s, `Drag into the bowl: ${missing.join(", ")}`);
       }
       break;
     }
@@ -524,16 +745,7 @@ export function reducer(state: GameState, action: Action): GameState {
         s.griddle[action.index] = { state: "empty" };
         toast(s, "Burnt pancake tossed 💨");
       } else {
-        if (s.plate && s.plate.toppings.length)
-          toast(s, "Plate is already topped — serve or trash it");
-        else if (s.plate && s.plate.count >= C.MAX_STACK)
-          toast(s, `Max ${C.MAX_STACK} pancakes per plate`);
-        else {
-          const plate: PancakeItem = s.plate ?? { kind: "pancake", count: 0, toppings: [] };
-          plate.count += 1;
-          s.plate = plate;
-          s.griddle[action.index] = { state: "empty" };
-        }
+        plateFromGriddle(s, action.index);
       }
       break;
     }
@@ -550,7 +762,7 @@ export function reducer(state: GameState, action: Action): GameState {
       if (b.blend > 0) break;
       if (b.ready) toast(s, "Serve or store the drink in the cup first");
       else if (!b.milk || !b.fruit)
-        toast(s, "Drink mode: add Milk + a Fruit (Ice optional), then blend");
+        toast(s, "Drag Milk + a Fruit into the blender (Ice optional), then blend");
       else b.blend = C.blendTime(s.progress.mixerLv);
       break;
     }
@@ -587,9 +799,7 @@ export function reducer(state: GameState, action: Action): GameState {
       if (s.held) {
         const item = itemAt(s, s.held);
         if (item && serve(s, c, item, s.held)) break;
-        c.rejectFlash = 0.6;
-        c.patience = Math.max(0.5, c.patience - 3);
-        toast(s, `${LOOKS[c.look].name} didn't order that!`);
+        reject(s, c);
         break;
       }
       const sources: NonNullable<Held>[] = [
@@ -619,5 +829,6 @@ export function reducer(state: GameState, action: Action): GameState {
       } else toast(s, "Select an item, then tap the trash");
       break;
   }
+  advanceTutorial(s);
   return s;
 }

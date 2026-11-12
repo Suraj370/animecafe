@@ -50,10 +50,6 @@ export function useGame() {
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") dispatch({ type: state.phase === "paused" ? "resume" : "pause" });
-      if (e.key === " " && state.phase === "playing") {
-        e.preventDefault();
-        dispatch({ type: "mode", mode: state.mode === "pancake" ? "drink" : "pancake" });
-      }
     };
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("keydown", onKey);
@@ -61,7 +57,7 @@ export function useGame() {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("keydown", onKey);
     };
-  }, [state.phase, state.mode]);
+  }, [state.phase]);
 
   return [state, dispatch] as const;
 }

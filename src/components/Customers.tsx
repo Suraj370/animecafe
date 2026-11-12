@@ -4,14 +4,9 @@ import { useEffect, useState } from "react";
 import { ENTRY_X, EXIT_X, SLOTS_X } from "@/game/config";
 import { LOOKS } from "@/game/looks";
 import type { Customer } from "@/game/types";
-import { Character, type Expression } from "./Character";
+import { useDrag } from "./drag";
 import { ItemThumb } from "./Food";
-
-function expressionOf(c: Customer): Expression {
-  if (c.outcome === "served") return "delight";
-  if (c.rejectFlash > 0) return "angry";
-  return c.mood;
-}
+import { CharSprite } from "./Scene";
 
 export function CustomerView({
   c,
@@ -35,71 +30,86 @@ export function CustomerView({
     };
   }, []);
 
+  const look = LOOKS[c.look];
   const slotX = SLOTS_X[c.slot];
   const x = c.phase === "leaving" ? EXIT_X : arrived ? slotX : ENTRY_X;
   const walking = c.phase !== "waiting";
-  const look = LOOKS[c.look];
   const waiting = c.phase === "waiting";
+  const angry = c.rejectFlash > 0 || (waiting && c.mood === "angry");
+  const { dropClass } = useDrag();
+  const drop = dropClass(`customer-${c.id}`);
 
   return (
-    <>
-      <div
-        className="absolute left-0 top-[52px]"
-        style={{
-          transform: `translateX(${x - 100}px)`,
-          transition: `transform ${c.walkDur}s linear`,
-          zIndex: c.phase === "leaving" ? 1 : 2,
-        }}
+    <div
+      className="absolute left-0"
+      style={{
+        top: look.top,
+        transform: `translateX(${x - look.anchor}px)`,
+        transition: `transform ${c.walkDur}s linear`,
+        zIndex: c.phase === "leaving" ? 1 : 2,
+      }}
+    >
+      <button
+        type="button"
+        disabled={!waiting}
+        onClick={() => onServe(c.id)}
+        aria-label={`Serve ${look.name}`}
+        data-tut="customer"
+        data-drop={`customer-${c.id}`}
+        className={`block cursor-pointer disabled:cursor-default ${walking ? "walk" : "breathe"} ${
+          c.rejectFlash > 0 ? "shake" : ""
+        } ${(holding && waiting) || drop ? "serve-glow" : ""} ${drop === "drop-over" ? "serve-hover" : ""} ${
+          angry ? "mood-angry" : ""
+        } ${c.outcome === "served" ? "mood-happy" : ""}`}
       >
-        <button
-          type="button"
-          disabled={!waiting}
-          onClick={() => onServe(c.id)}
-          aria-label={`Serve ${look.name}`}
-          className={`block cursor-pointer disabled:cursor-default ${walking ? "walk" : "breathe"} ${
-            c.rejectFlash > 0 ? "shake" : ""
-          } ${holding && waiting ? "serve-glow" : ""}`}
-        >
-          <Character look={look} expression={expressionOf(c)} />
-        </button>
-        {c.outcome === "served" && <div className="reaction text-[34px]">💖</div>}
-        {c.outcome === "angry" && <div className="reaction text-[34px]">💢</div>}
-      </div>
-      {waiting && <OrderBubble c={c} onServe={onServe} />}
-    </>
+        <CharSprite look={look} />
+      </button>
+      {c.outcome === "served" && (
+        <div className="reaction emoji text-[34px]" style={{ left: look.anchor + 30, top: 0 }}>
+          💖
+        </div>
+      )}
+      {(c.outcome === "angry" || (waiting && c.mood === "angry")) && (
+        <div className="anger emoji text-[30px]" style={{ left: look.anchor + 26, top: 4 }}>
+          💢
+        </div>
+      )}
+    </div>
   );
 }
 
-function OrderBubble({ c, onServe }: { c: Customer; onServe: (id: number) => void }) {
+/** Order bubble, styled after the mockup: cream card, dark outline, patience bar on the left. */
+export function OrderBubble({ c, onServe }: { c: Customer; onServe: (id: number) => void }) {
   const ratio = Math.max(0, c.patience / c.maxPatience);
-  const x = SLOTS_X[c.slot] + 66;
+  const { dropClass } = useDrag();
   return (
     <button
       type="button"
       onClick={() => onServe(c.id)}
-      className="bubble-in absolute top-[78px] z-[3] flex cursor-pointer items-stretch gap-2 rounded-[18px] border-[3px] border-white bg-white/95 p-2 pl-2 shadow-[0_8px_18px_rgba(90,40,70,.25)]"
-      style={{ left: x }}
+      data-tut="bubble"
+      data-drop={`customer-${c.id}`}
       aria-label={`${LOOKS[c.look].name}'s order`}
+      className={`bubble-in absolute z-[3] flex cursor-pointer items-stretch gap-2 rounded-[16px] border-[3px] border-[#3B2A3A] bg-[#FCF4EE] p-[7px] shadow-[0_6px_14px_rgba(60,30,50,.3)] ${dropClass(
+        `customer-${c.id}`,
+      )}`}
+      style={{ left: SLOTS_X[c.slot] + 52, top: 82, width: 146, height: 166 }}
     >
-      <span className="absolute left-[-11px] top-[56px] h-0 w-0 border-y-[9px] border-r-[12px] border-y-transparent border-r-white" />
+      {/* pointer towards the customer */}
+      <span className="absolute left-[-15px] top-[112px] h-0 w-0 border-y-[11px] border-r-[14px] border-y-transparent border-r-[#3B2A3A]" />
+      <span className="absolute left-[-10px] top-[115px] h-0 w-0 border-y-[8px] border-r-[10px] border-y-transparent border-r-[#FCF4EE]" />
       {/* patience meter */}
-      <span className="relative w-[12px] overflow-hidden rounded-full bg-gradient-to-b from-[#7BD67B] via-[#FFD54F] to-[#FF6B6B] shadow-inner">
+      <span className="relative w-[16px] shrink-0 overflow-hidden rounded-[8px] border-[2.5px] border-[#3B2A3A] bg-gradient-to-b from-[#58C94F] via-[#F2D33C] to-[#EE5A3C]">
         <span
-          className="absolute left-0 right-0 top-0 bg-[#5b4560]/80 transition-[height] duration-100"
+          className="absolute left-0 right-0 top-0 bg-[#4A3550] transition-[height] duration-100"
           style={{ height: `${(1 - ratio) * 100}%` }}
         />
       </span>
-      <span className="flex flex-col items-center justify-center gap-1">
+      <span className="flex flex-1 flex-col items-center justify-around">
         {c.order.map((line, i) => (
-          <span
-            key={i}
-            className={`relative flex h-[66px] w-[86px] items-center justify-center rounded-xl ${
-              line.done ? "opacity-40" : ""
-            } ${i > 0 ? "border-t border-dashed border-[#E8D3E0]" : ""}`}
-          >
-            <ItemThumb item={line.item} size={84} />
+          <span key={i} className={`relative flex h-[70px] w-[104px] items-center justify-center ${line.done ? "opacity-40" : ""}`}>
+            <ItemThumb item={line.item} size={line.item.kind === "pancake" ? 106 : 112} />
             {line.done && (
-              <span className="absolute inset-0 flex items-center justify-center text-[30px] font-bold text-[#39B54A]">
+              <span className="absolute inset-0 flex items-center justify-center text-[34px] font-bold text-[#39B54A] drop-shadow">
                 ✓
               </span>
             )}
