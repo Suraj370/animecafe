@@ -198,7 +198,7 @@ function freshRound(
     lost: 0,
     earnedCoins: 0,
     customers: [],
-    spawnTimer: 1,
+    spawnTimer: C.FIRST_CUSTOMER_DELAY,
     bowl: { flour: false, eggs: false, milk: false, whisk: 0, batter: 0 },
     griddle: Array.from({ length: C.griddleSlots(progress.griddleLv) }, () => ({
       state: "empty" as const,

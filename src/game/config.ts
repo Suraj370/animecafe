@@ -9,7 +9,9 @@ export const H = 672;
 /** Customers are drawn behind the counter: everything below this y is counter. */
 export const COUNTER_Y = 312;
 
-export const STAGE_TIME = 120;
+export const STAGE_TIME = 300; // 5 minutes
+/** Seconds before the first customer walks in. */
+export const FIRST_CUSTOMER_DELAY = 10;
 export const MAX_LV = 5;
 export const SLATE_SIZE = 6;
 export const BATTER_PORTIONS = 4;
@@ -34,7 +36,7 @@ export const TOPPING_ORDER: Topping[] = [
 
 export const stageLabel = (stage: number) =>
   `${Math.floor((stage - 1) / 5) + 1}-${((stage - 1) % 5) + 1}`;
-export const targetFor = (stage: number) => 1200 + (stage - 1) * 300;
+export const targetFor = (stage: number) => 3000 + (stage - 1) * 750; // scaled up for the longer 5-minute stage
 /** Score needed for 1, 2 and 3 stars. */
 export const starGoals = (stage: number) => [1, 1.3, 1.6].map((k) => Math.round(targetFor(stage) * k));
 export const starsFor = (score: number, stage: number) => starGoals(stage).filter((g) => score >= g).length;
