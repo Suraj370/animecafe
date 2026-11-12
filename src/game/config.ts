@@ -40,7 +40,7 @@ export const targetFor = (stage: number) => 3000 + (stage - 1) * 750; // scaled 
 /** Score needed for 1, 2 and 3 stars. */
 export const starGoals = (stage: number) => [1, 1.3, 1.6].map((k) => Math.round(targetFor(stage) * k));
 export const starsFor = (score: number, stage: number) => starGoals(stage).filter((g) => score >= g).length;
-export const patienceFor = (stage: number) => Math.max(26, 52 - stage * 2);
+export const patienceFor = (stage: number) => Math.max(45, 90 - stage * 3); // seconds a customer waits
 export const spawnGap = (stage: number) =>
   Math.max(1.5, 5.5 - stage * 0.35) + Math.random() * 3;
 
